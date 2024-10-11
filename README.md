@@ -1,14 +1,13 @@
 # Plankton community composition and size structure in the North Sea in autumn and winter from 2013-2019
 
 Script and data material related to :  
-**Plankton community composition and size structure in the North Sea in autumn and winter from 2013-2019** by Gregor Börner, Romain Frelat, Anna Akimova, Cindy van Damme, Myron A. Peck, and Marta Moyano.
+**Autumn and winter plankton composition and size structure in the North Sea** by Gregor Börner, Romain Frelat, Anna Akimova, Cindy van Damme, Myron A. Peck, and Marta Moyano.
 
 
 
 The data sets are stored in one Rdata files NBSS_Borner_2023.Rdata. It contains two data.frames:  
 - tab: abundance of plankton per station  
 - env: environmental and biological conditions per stations  
-*(do we provide the data preprocessing scripts and the raw data?)*
 
 
 The scripts are organised as follow:  

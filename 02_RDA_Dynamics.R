@@ -1,7 +1,7 @@
 # 02_RDADynamics.R: 
 # run RDA for either Buchan/Banks in autumn 
 # or Downs in winter (Fig 4 and 5)  
-# Last update: 25/04/2023
+# Last update: 10/10/2024
 
 # 1. Load data and required functions ---------------------
 load("NBSS_Borner_2023.Rdata")
@@ -9,14 +9,16 @@ require(ade4)
 require(vegan)
 require(maps)
 require(mapdata)
+require(car)
+require(nortest)
 
 # 2. Set parameters ---------------------------------------
 
 # Select survey
 # set to 'Sep' for September survey in Buchan/Banks or 'Dec' for December in Downs 
-paramM <- "Sep" #or Dec 
+paramM <- "Dec" #or Dec 
 
-# Variable of interest : here abundance
+# Variable of interest : here abundance (orgDF), biomass (carbonDF), biovolume (biovolDF)
 varV <- "orgDF"
 
 # Color palette
@@ -103,19 +105,65 @@ clatyp <- table(tab$class,tab$typ)
 clatypC <- apply(clatyp, 1, which.max)
 
 # 4. Run the RDA --------------------------
+
+# Reshape the 'abu' matrix to a long format for Levene's Test
+abu_long <- as.data.frame(as.table(abu))
+
+# Rename columns for clarity
+colnames(abu_long) <- c("station", "spesize", "abundance")
+
+# Convert 'station' to a factor if it's not already
+abu_long$station <- as.factor(abu_long$station)
+
+# Perform Levene's Test for homogeneity of variances
+levene_test <- leveneTest(abundance ~ station, data = abu_long, center = "median")
+print(levene_test)
+
+# Perform Anderson-Darling Test for normality on abundance data
+ad_test <- ad.test(abu_long$abundance)
+print(ad_test)
+
 # abundance is eighth rooted
 sqabu <- abu**(1/8)
 
 # then Hellinger transformed
 abuH <- decostand(sqabu, method = "hellinger")
 
+# Reassess homogeneity of variances after transformation
+# Reshape the transformed data for Levene's Test
+abuH_long <- as.data.frame(as.table(abuH))
+colnames(abuH_long) <- c("station", "spesize", "abundance")
+abuH_long$station <- as.factor(abuH_long$station)
+
+# Perform Levene's Test on the transformed data
+levene_test_after <- leveneTest(abundance ~ station, data = abuH_long, center = "median")
+print(levene_test_after)
+
+# # Perform Anderson-Darling Test for normality on the transformed abundance data
+# ad_test_transformed <- ad.test(sqabu_long$abundance_transformed)
+# print(ad_test_transformed)
+
 # run PCA with transformed abundance
 pca1 <- dudi.pca(abuH, scannf = FALSE, nf = 3)
+
+# Detrended Correspondence Analysis
+# DCA <- decorana (log1p (abuH))
+# DCA
 
 # run the RDA with PCA results and environmental variables
 rda1 <- pcaiv(pca1, as.data.frame(env1),
               scannf = FALSE, nf = 3)
-# summary(rda1)
+
+# ANOVA on RDA1 scores against environmental variables
+p <- data.frame(RDA1 = rda1$li[,1], env1)
+anova_results <- lapply(names(p)[2:ncol(p)], function(var) summary(aov(RDA1 ~ p[[var]], data = p)))
+names(anova_results) <- names(p)[2:ncol(p)]
+print(anova_results)
+
+# Perform a permutation test to assess the significance of the R² value from the RDA
+testR2.rda.F <- randtest(rda1, nrepet = 999)
+testR2.rda.F # test of the R2 (portion of community data explained by environmental variables)
+rda1$cor ## correlation with environmental variables
 
 # labels PC1
 labpc1 <- paste0("PC1: ", round(rda1$eig[1]/sum(rda1$eig)*100,1), "%",
@@ -132,6 +180,17 @@ if (paramM != "Sep"){
 
 # 5. Plot the figure ----------------------
 
+# Define the mapping between varV values and corresponding labels
+label_map <- list(orgDF = "abundance",
+                  carbonDF = "biomass",
+                  biovolDF = "biovolume")
+
+# Loop through each varV value
+for (v in varV) {
+  # Create the plot title based on the current varV value
+  title <- paste(labpc1, "- Metric:", label_map[[v]])
+}
+
 # set the layout
 layout(matrix(c(1,3,3,2,4,5), ncol=2), heights = c(1.5,1,1))
 
@@ -143,7 +202,7 @@ Spe <- factor(infoC$species, levels = levels(infoC$species)[ordSp])
 colSpe <- colFZ[spetypC[match(levels(Spe),names(spetypC))]]
 boxplot(rda1$co[,1]~Spe, horizontal = TRUE, col=colSpe,
         xlab="PC1", ylab="", las=1, cex.axis=0.7,
-        main=labpc1)
+        main=title)
 abline(v=0, lty=2, col="grey")
 #Add color scale
 xlim <- c(-1,1)*(max(abs(rda1$co[,1])))
@@ -201,7 +260,7 @@ if (tolower(paramM)=="sep"){
   polygon(c(2014.2, 2015.8, 2015.8, 2014.2), c(rep(min(qpc1), 2), rep(max(qpc1),2)), 
           col="white", border=NA)
 } else {
-  polygon(c(2013.2, 2014.8, 2014.8, 2013.2), c(rep(min(qpc1), 2), rep(max(qpc1),2)), 
+  polygon(c(2013.2, 2015, 2015, 2013.2), c(rep(min(qpc1), 2), rep(max(qpc1),2)), 
           col="white", border=NA)
 }
 
@@ -218,7 +277,8 @@ par(mar=c(4,5,1,1), las=1)
 ordE <- order(rda1$cor[,1])
 mpc1 <- max(abs(rda1$cor[,1]))
 bke <- seq(-mpc1, mpc1, length.out=9)
-cole <- pal[cut(rda1$cor[,1], bke, include.lowest=TRUE)]
+cole <- pal[cut(rda1$cor[,1], breaks=bke, include.lowest=TRUE)]
 barplot(rda1$cor[ordE,1], horiz=TRUE, col=cole[ordE],
-        names.arg = labV[ordE], xlab="PC1")
+        names.arg = labV[ordE], xlab="PC1", xlim=c(min(rda1$cor[,1])-0.2,max(rda1$cor[,1])+0.2))
 
+rda1$cor
